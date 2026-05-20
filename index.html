@@ -1,0 +1,1575 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>光敏卡通印章大師 Pro - 研習特製版</title>
+  
+  <!-- Tailwind CSS 靜態載入 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM 核心庫 (使用 jsdelivr 確保手機端高速且穩定的載入速度) -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel 在瀏覽器中即時解析 JSX (鎖定版本，確保手機 iOS/Android 完美相容) -->
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.12/babel.min.js" crossorigin></script>
+  
+  <!-- 載入繁體中文字體：中文標楷體/宋體與圓形字體最佳對接 -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      touch-action: manipulation;
+    }
+    .font-serif-tc {
+      font-family: 'Noto Serif TC', serif;
+    }
+    /* 避免拖曳時文字與介面被選中 */
+    canvas {
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- ================= 研習安全診斷防禦機制 ================= -->
+  <!-- 如果手機載入發生任何 JS 錯誤，會立刻顯示此面板，避免學生遇到悶聲白屏 -->
+  <div id="error-screen" class="hidden fixed inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center z-50">
+    <div class="bg-rose-500/10 border border-rose-500/30 p-6 rounded-2xl max-w-md w-full">
+      <h2 class="text-rose-400 font-bold text-lg mb-2 flex items-center justify-center gap-2">⚠️ 系統載入出錯</h2>
+      <p class="text-slate-400 text-sm mb-4">很抱歉，研習系統在您的手機或裝置上初始化失敗。請確認網路或更換瀏覽器打開。</p>
+      <pre id="error-log" class="text-left text-xs bg-slate-900 p-4 rounded-lg overflow-x-auto text-rose-300 max-h-40 font-mono"></pre>
+      <button onclick="location.reload()" class="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-500 rounded-xl text-xs font-bold transition-all">重新整理網頁</button>
+    </div>
+  </div>
+  
+  <script>
+    // 全局捕獲未處理的 JS 錯誤
+    window.addEventListener('error', function(e) {
+      document.getElementById('error-screen').classList.remove('hidden');
+      document.getElementById('error-log').textContent += '\n[' + new Date().toLocaleTimeString() + '] ' + e.message;
+    });
+  </script>
+
+  <!-- React 渲染掛載點 -->
+  <div id="root"></div>
+
+  <!-- 主程式編譯區 -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // === 解決問題：補上全局輔助十六進位轉 RGB 函數 ===
+    const hexToRgb = (hex) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 255, g: 255, b: 255 };
+    };
+
+    // === 16款常用基本卡通與造型圖案 SVG 庫（補齊寬高，支援手機 Canvas 零延遲繪製） ===
+    const CLIPART_LIBRARY = {
+      bear: {
+        name: "可愛萌熊",
+        emoji: "🐻",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="25" cy="25" r="11" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="25" cy="25" r="4" fill="black" />
+          <circle cx="75" cy="25" r="11" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="75" cy="25" r="4" fill="black" />
+          <circle cx="50" cy="55" r="34" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="38" cy="46" r="4.5" fill="black" />
+          <circle cx="62" cy="46" r="4.5" fill="black" />
+          <ellipse cx="50" cy="62" rx="10" ry="7" fill="white" stroke="black" stroke-width="4" />
+          <polygon points="46,59 54,59 50,63" fill="black" />
+          <path d="M 45 66 Q 50 71 55 66" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+        </svg>`
+      },
+      panda: {
+        name: "呆萌熊貓",
+        emoji: "🐼",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="24" cy="24" r="12" fill="black" />
+          <circle cx="76" cy="24" r="12" fill="black" />
+          <circle cx="50" cy="55" r="35" fill="white" stroke="black" stroke-width="6" />
+          <ellipse cx="34" cy="48" rx="8" ry="12" fill="black" transform="rotate(-15 34 48)" />
+          <ellipse cx="66" cy="48" rx="8" ry="12" fill="black" transform="rotate(15 66 48)" />
+          <circle cx="34" cy="48" r="3" fill="white" />
+          <circle cx="66" cy="48" r="3" fill="white" />
+          <ellipse cx="50" cy="61" rx="8" ry="5" fill="black" />
+          <path d="M 44 68 Q 50 72 56 68" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+        </svg>`
+      },
+      rabbit: {
+        name: "長耳兔子",
+        emoji: "🐰",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <rect x="26" y="8" width="13" height="38" rx="6.5" fill="white" stroke="black" stroke-width="6" />
+          <rect x="30" y="16" width="5" height="20" rx="2.5" fill="black" />
+          <rect x="61" y="8" width="13" height="38" rx="6.5" fill="white" stroke="black" stroke-width="6" />
+          <rect x="65" y="16" width="5" height="20" rx="2.5" fill="black" />
+          <circle cx="50" cy="62" r="28" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="40" cy="56" r="4" fill="black" />
+          <circle cx="60" cy="56" r="4" fill="black" />
+          <polygon points="47,64 53,64 50,67" fill="black" />
+          <path d="M 45 70 Q 50 74 55 70" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="16" y1="62" x2="6" y2="60" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="16" y1="68" x2="8" y2="72" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="84" y1="62" x2="94" y2="60" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="84" y1="68" x2="92" y2="72" stroke="black" stroke-width="4" stroke-linecap="round" />
+        </svg>`
+      },
+      cat: {
+        name: "萌耳貓咪",
+        emoji: "🐱",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <polygon points="18,22 38,38 18,50" fill="white" stroke="black" stroke-width="6" stroke-linejoin="round" />
+          <polygon points="18,22 28,34 18,42" fill="black" />
+          <polygon points="82,22 62,38 82,50" fill="white" stroke="black" stroke-width="6" stroke-linejoin="round" />
+          <polygon points="82,22 72,34 82,42" fill="black" />
+          <circle cx="50" cy="56" r="33" fill="white" stroke="black" stroke-width="6" />
+          <ellipse cx="37" cy="49" rx="4" ry="5.5" fill="black" />
+          <ellipse cx="63" cy="49" rx="4" ry="5.5" fill="black" />
+          <polygon points="46,57 54,57 50,61" fill="black" />
+          <path d="M 43 65 Q 50 71 57 65" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="22" y1="56" x2="8" y2="54" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="22" y1="62" x2="10" y2="65" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="78" y1="56" x2="92" y2="54" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <line x1="78" y1="62" x2="90" y2="65" stroke="black" stroke-width="4" stroke-linecap="round" />
+        </svg>`
+      },
+      dog: {
+        name: "溫順狗狗",
+        emoji: "🐶",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <ellipse cx="14" cy="50" rx="10" ry="22" fill="black" transform="rotate(15 14 50)" />
+          <ellipse cx="86" cy="50" rx="10" ry="22" fill="black" transform="rotate(-15 86 50)" />
+          <circle cx="50" cy="55" r="34" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="38" cy="46" r="5" fill="black" />
+          <circle cx="62" cy="46" r="5" fill="black" />
+          <ellipse cx="50" cy="57" rx="9" ry="6" fill="black" />
+          <path d="M 44 65 Q 50 71 56 65" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+          <path d="M 50 62 L 50 73" stroke="black" stroke-width="4.5" stroke-linecap="round" />
+        </svg>`
+      },
+      monkey: {
+        name: "頑皮猴子",
+        emoji: "🐵",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="16" cy="50" r="11" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="16" cy="50" r="5" fill="black" />
+          <circle cx="84" cy="50" r="11" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="84" cy="50" r="5" fill="black" />
+          <circle cx="50" cy="52" r="34" fill="white" stroke="black" stroke-width="6" />
+          <path d="M 23 48 C 23 32, 50 28, 50 48 C 50 28, 77 32, 77 48 C 77 68, 23 68, 23 48 Z" fill="none" stroke="black" stroke-width="4" />
+          <circle cx="36" cy="48" r="4" fill="black" />
+          <circle cx="64" cy="48" r="4" fill="black" />
+          <ellipse cx="50" cy="58" rx="6" ry="4" fill="black" />
+          <path d="M 40 66 Q 50 73 60 66" fill="none" stroke="black" stroke-width="4.5" stroke-linecap="round" />
+        </svg>`
+      },
+      frog: {
+        name: "呱呱青蛙",
+        emoji: "🐸",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="32" cy="30" r="11" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="32" cy="30" r="5" fill="black" />
+          <circle cx="68" cy="30" r="11" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="68" cy="30" r="5" fill="black" />
+          <ellipse cx="50" cy="58" rx="36" ry="28" fill="white" stroke="black" stroke-width="6" />
+          <circle cx="28" cy="54" r="4" fill="black" />
+          <circle cx="72" cy="54" r="4" fill="black" />
+          <path d="M 30 60 Q 50 74 70 60" fill="none" stroke="black" stroke-width="5.5" stroke-linecap="round" />
+        </svg>`
+      },
+      note: {
+        name: "歡樂音符",
+        emoji: "🎵",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <ellipse cx="28" cy="72" rx="12" ry="8" fill="black" transform="rotate(-15 28 72)" stroke="black" stroke-width="3" />
+          <ellipse cx="68" cy="62" rx="12" ry="8" fill="black" transform="rotate(-15 68 62)" stroke="black" stroke-width="3" />
+          <line x1="38" y1="72" x2="38" y2="24" stroke="black" stroke-width="8.5" stroke-linecap="round" />
+          <line x1="78" y1="62" x2="78" y2="14" stroke="black" stroke-width="8.5" stroke-linecap="round" />
+          <polygon points="38,24 78,14 78,28 38,38" fill="black" stroke="black" stroke-width="3" stroke-linejoin="round" />
+        </svg>`
+      },
+      star: {
+        name: "閃耀星星",
+        emoji: "⭐",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <polygon points="50,10 63,38 93,38 69,57 79,87 50,69 21,87 31,57 7,38 37,38" fill="white" stroke="black" stroke-width="6" stroke-linejoin="round" />
+          <circle cx="41" cy="46" r="4.5" fill="black" />
+          <circle cx="59" cy="46" r="4.5" fill="black" />
+          <path d="M 44 54 Q 50 61 56 54" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+        </svg>`
+      },
+      clover: {
+        name: "幸運四葉草",
+        emoji: "🍀",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <path d="M 50 50 Q 30 30, 50 14 Q 70 30, 50 50 Z" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 Q 70 70, 86 50 Q 70 30, 50 50 Z" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 Q 30 70, 14 50 Q 30 30, 50 50 Z" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 Q 30 70, 50 86 Q 70 70, 50 50 Z" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 Q 42 75, 48 92" fill="none" stroke="black" stroke-width="6" stroke-linecap="round" />
+        </svg>`
+      },
+      heart: {
+        name: "甜心愛心",
+        emoji: "❤️",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <path d="M 50 34 C 40 10, 10 15, 10 45 C 10 70, 40 85, 50 92 C 60 85, 90 70, 90 45 C 90 15, 60 10, 50 34 Z" fill="white" stroke="black" stroke-width="6" stroke-linejoin="round" />
+          <circle cx="34" cy="40" r="3" fill="black" />
+          <circle cx="66" cy="40" r="3" fill="black" />
+          <path d="M 44 48 Q 50 53 56 48" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" />
+        </svg>`
+      },
+      sakura: {
+        name: "美麗櫻花",
+        emoji: "🌸",
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <path d="M 50 50 C 40 22, 60 22, 50 10 C 40 22, 60 22, 50 50" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 C 78 40, 78 60, 90 50 C 78 40, 78 60, 50 50" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 C 60 78, 40 78, 50 90 C 60 78, 40 78, 50 50" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <path d="M 50 50 C 22 60, 22 40, 10 50 C 22 60, 22 40, 50 50" fill="white" stroke="black" stroke-width="5" stroke-linejoin="round" />
+          <circle cx="50" cy="50" r="8" fill="white" stroke="black" stroke-width="5" />
+        </svg>`
+      }
+    };
+
+    // === 自製純黑內嵌 SVG 圖標組件 ===
+    const Icon = ({ name, className = "w-5 h-5" }) => {
+      const icons = {
+        upload: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />,
+        download: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
+        refresh: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 3v5h-5" />,
+        zoomIn: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />,
+        rotate: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 3v5h-5" />,
+        type: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h7" />,
+        shield: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622" />,
+        sparkles: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21" />,
+        sliders: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2" />,
+        eye: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7" />,
+        move: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 9l4-4 4 4m0 6l-4 4-4-4M5 12h14" />,
+        settings: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37" />,
+        smile: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        grid: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2" />
+      };
+
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {icons[name]}
+        </svg>
+      );
+    };
+
+    function App() {
+      const [image, setImage] = useState(null);
+      const [imageName, setImageName] = useState("");
+      const [selectedClipart, setSelectedClipart] = useState("bear");
+      
+      // === 研習特化預設設定 ===
+      const [activeTab, setActiveTab] = useState("upload"); // 預設開啟「照片上傳」
+      const [stampLayout, setStampLayout] = useState('curved'); // 預設開啟「雙圈同心弧排版」
+      const [borderType, setBorderType] = useState('double'); // 預設為「雙圓框」
+      
+      // 影像變形狀態
+      const [imgScale, setImgScale] = useState(1.0);
+      const [imgRotation, setImgRotation] = useState(0);
+      const [imgX, setImgX] = useState(0);
+      const [imgY, setImgY] = useState(0);
+      
+      // === 主體自動去背與純化控制系統 ===
+      const [bgColorKey, setBgColorKey] = useState('#ffffff'); // 去背吸管色 (預設去白/淺灰)
+      const [bgTolerance, setBgTolerance] = useState(65); // 色度容差 (0-180)
+      const [focalCropRadius, setFocalCropRadius] = useState(440); // 正圓焦點剪裁半徑
+      const [blackPoint, setBlackPoint] = useState(115); // 線條著墨加粗閥值
+      const [whitePoint, setWhitePoint] = useState(185); // 紙張影子去污閥值
+      const [enableLineBoost, setEnableLineBoost] = useState(true); // 微邊框加粗
+      
+      // 邊框構造
+      const [borderWidth, setBorderWidth] = useState(16);
+      const [dividerY, setDividerY] = useState(640);
+      const [dividerWidth, setDividerWidth] = useState(12);
+      
+      // 文字編輯
+      const [textMain, setTextMain] = useState("王小明"); // 置中姓名
+      const [textSub, setTextSub] = useState("SUPERSTAR"); // 頂部文字
+      const [textBottomArched, setTextBottomArched] = useState("CREATIVE STUDY"); // 底部文字
+      
+      // 刻字細微排版
+      const [fontSizeMain, setFontSizeMain] = useState(115);
+      const [fontSizeSub, setFontSizeSub] = useState(55);
+      const [textSpacingSub, setTextSpacingSub] = useState(0.14); // 文字寬度
+      const [textRadiusOffset, setTextRadiusOffset] = useState(0); // 解決字體縮小跑位問題 (半徑位移)
+      const [textYOffset, setTextYOffset] = useState(0); // 文字高度修正
+      const [fontFamily, setFontFamily] = useState('Serif'); // 'Serif' 標楷體, 'Sans' 黑體
+
+      // 下載狀態與 SVG 快取
+      const [clipartImages, setClipartImages] = useState({});
+      const [showRealScale, setShowRealScale] = useState(false);
+      const [dragStart, setDragStart] = useState(null);
+      const [isDragging, setIsDragging] = useState(false);
+      const [toastMsg, setToastMsg] = useState("");
+
+      const canvasRef = useRef(null);
+
+      // 觸發通知
+      const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => setToastMsg(""), 3500);
+      };
+
+      // 產生預設高對比肖像（解決一進來沒照片的白畫面問題，即時產生示範圖）
+      useEffect(() => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 400;
+        tempCanvas.height = 400;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        tempCtx.fillStyle = '#ffffff';
+        tempCtx.fillRect(0, 0, 400, 400);
+        
+        tempCtx.fillStyle = '#000000';
+        tempCtx.beginPath();
+        tempCtx.arc(200, 160, 80, 0, Math.PI * 2);
+        tempCtx.fill();
+        
+        tempCtx.beginPath();
+        tempCtx.ellipse(200, 310, 110, 70, 0, 0, Math.PI * 2);
+        tempCtx.fill();
+        
+        tempCtx.fillStyle = '#ffffff';
+        tempCtx.beginPath();
+        tempCtx.arc(170, 150, 12, 0, Math.PI * 2);
+        tempCtx.arc(230, 150, 12, 0, Math.PI * 2);
+        tempCtx.fill();
+        tempCtx.fillStyle = '#000000';
+        tempCtx.beginPath();
+        tempCtx.arc(170, 150, 6, 0, Math.PI * 2);
+        tempCtx.arc(230, 150, 6, 0, Math.PI * 2);
+        tempCtx.fill();
+        
+        tempCtx.strokeStyle = '#ffffff';
+        tempCtx.lineWidth = 6;
+        tempCtx.beginPath();
+        tempCtx.arc(200, 180, 25, 0, Math.PI);
+        tempCtx.stroke();
+        
+        const img = new Image();
+        img.onload = () => {
+          setImage(img); // 設定為初始示範圖
+        };
+        img.src = tempCanvas.toDataURL();
+      }, []);
+
+      // 預載 16 款 SVG 圖案快取
+      useEffect(() => {
+        const loadedMap = {};
+        let loadedCount = 0;
+        const keys = Object.keys(CLIPART_LIBRARY);
+        
+        keys.forEach(key => {
+          const img = new Image();
+          img.onload = () => {
+            loadedMap[key] = img;
+            loadedCount++;
+            if (loadedCount === keys.length) {
+              setClipartImages(loadedMap);
+            }
+          };
+          img.src = getClipartImgSrc(key);
+        });
+      }, []);
+
+      // 處理上傳檔案
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        setImageName(file.name);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            setImage(img);
+            setImgScale(1.0);
+            setImgX(0);
+            setImgY(-20);
+            setImgRotation(0);
+            setActiveTab("upload");
+            showToast("手繪照片已完美載入！您可以用滑鼠在圓圈內拖曳、調整縮放。");
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      };
+
+      // 獲取 SVG 的 Data URL 格式
+      const getClipartImgSrc = (key) => {
+        const svgContent = CLIPART_LIBRARY[key]?.svg;
+        if (!svgContent) return "";
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`;
+      };
+
+      // 渲染印章二值化與文字配置 (虛擬 1000px 直徑解析度)
+      const drawStampBase = (canvas, size = 1000) => {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        canvas.width = size;
+        canvas.height = size;
+        
+        ctx.save();
+        ctx.scale(size / 1000, size / 1000);
+        
+        // 1. 底色純白 (曝光底色規格)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 1000, 1000);
+
+        // 2. 建立照片暫存層
+        const photoCanvas = document.createElement('canvas');
+        photoCanvas.width = 1000;
+        photoCanvas.height = 1000;
+        const pCtx = photoCanvas.getContext('2d');
+        
+        pCtx.save();
+        pCtx.beginPath();
+        pCtx.arc(500, 500, 475, 0, Math.PI * 2);
+        pCtx.clip();
+
+        if (activeTab === 'upload' && image) {
+          pCtx.save();
+          pCtx.translate(500 + imgX, 500 + imgY);
+          pCtx.rotate((imgRotation * Math.PI) / 180);
+          
+          const iw = image.width;
+          const ih = image.height;
+          const minDim = Math.min(iw, ih);
+          const scaleBase = (750 / minDim) * imgScale;
+          pCtx.drawImage(image, -iw * scaleBase / 2, -ih * scaleBase / 2, iw * scaleBase, iw * scaleBase);
+          pCtx.restore();
+          
+          // 自動去背與極高對比處理演算法
+          const imgData = pCtx.getImageData(0, 0, 1000, 1000);
+          const data = imgData.data;
+          const keyRgb = hexToRgb(bgColorKey);
+
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i+1];
+            const b = data[i+2];
+            const a = data[i+3];
+
+            const xCoord = (i / 4) % 1000;
+            const yCoord = Math.floor((i / 4) / 1000);
+            const distFromCenter = Math.sqrt(Math.pow(xCoord - 500, 2) + Math.pow(yCoord - 500, 2));
+
+            // A. 正圓裁切：將四周雜訊黑影一鍵切除
+            if (distFromCenter > focalCropRadius) {
+              data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+              continue;
+            }
+
+            if (a < 10) {
+              data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+              continue;
+            }
+
+            // B. 背景去色橡皮擦
+            const colorDist = Math.sqrt(
+              Math.pow(r - keyRgb.r, 2) + 
+              Math.pow(g - keyRgb.g, 2) + 
+              Math.pow(b - keyRgb.b, 2)
+            );
+
+            if (colorDist < bgTolerance) {
+              data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+              continue;
+            }
+
+            // C. 雙臨界曝光去背 Levels 演算法
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            let finalVal = 255;
+            if (gray <= blackPoint) {
+              finalVal = 0;
+            } else if (gray >= whitePoint) {
+              finalVal = 255;
+            } else {
+              const ratio = (gray - blackPoint) / (whitePoint - blackPoint);
+              finalVal = ratio < 0.5 ? 0 : 255;
+            }
+
+            data[i] = finalVal;
+            data[i+1] = finalVal;
+            data[i+2] = finalVal;
+            data[i+3] = 255;
+          }
+          pCtx.putImageData(imgData, 0, 0);
+
+          if (enableLineBoost) {
+            pCtx.shadowColor = 'black';
+            pCtx.shadowBlur = 1;
+          }
+        } else {
+          // 繪製內建卡通 SVG 向量
+          pCtx.fillStyle = '#ffffff';
+          pCtx.fillRect(0, 0, 1000, 1000);
+          
+          const cachedImg = clipartImages[selectedClipart];
+          if (cachedImg) {
+            pCtx.save();
+            const targetY = stampLayout === 'bottom-bar' ? 470 + imgY : 500 + imgY;
+            pCtx.translate(500 + imgX, targetY);
+            pCtx.rotate((imgRotation * Math.PI) / 180);
+            
+            const svgSize = 440 * imgScale;
+            pCtx.drawImage(cachedImg, -svgSize/2, -svgSize/2, svgSize, svgSize);
+            pCtx.restore();
+          }
+        }
+        pCtx.restore();
+
+        // 疊加處理完的影像
+        ctx.drawImage(photoCanvas, 0, 0);
+
+        // 3. 水平分割座 (下分欄圓章排版)
+        if (stampLayout === 'bottom-bar') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(50, dividerY, 900, 1000 - dividerY - 50);
+
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = dividerWidth;
+          ctx.lineCap = 'square';
+          ctx.beginPath();
+          const distFromCenter = Math.abs(500 - dividerY);
+          const chordHalf = Math.sqrt(450 * 450 - distFromCenter * distFromCenter);
+          ctx.moveTo(500 - chordHalf + borderWidth/2, dividerY);
+          ctx.lineTo(500 + chordHalf - borderWidth/2, dividerY);
+          ctx.stroke();
+        }
+
+        // 4. 外圓框樣式
+        ctx.strokeStyle = '#000000';
+        ctx.lineCap = 'round';
+        
+        if (borderType === 'single') {
+          ctx.lineWidth = borderWidth;
+          ctx.beginPath();
+          ctx.arc(500, 500, 460 - borderWidth/2, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (borderType === 'double') {
+          ctx.lineWidth = borderWidth;
+          ctx.beginPath();
+          ctx.arc(500, 500, 465 - borderWidth/2, 0, Math.PI * 2);
+          ctx.stroke();
+          
+          ctx.lineWidth = Math.max(4, borderWidth / 3);
+          ctx.beginPath();
+          ctx.arc(500, 500, 465 - borderWidth - 15, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (borderType === 'bold-single') {
+          ctx.lineWidth = borderWidth * 1.6;
+          ctx.beginPath();
+          ctx.arc(500, 500, 460 - (borderWidth * 1.6)/2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // 5. 中英文文字大字渲染與半徑位移修正
+        ctx.fillStyle = '#000000';
+        
+        const renderArchedText = (text, startAngle, endAngle, radius, size, isReversed, spaceFactor) => {
+          if (!text) return;
+          ctx.save();
+          
+          // 修正字型定義語法，防止 iOS 瀏覽器報錯不渲染
+          const fontName = fontFamily === 'Serif'
+            ? '"Noto Serif TC", "DFKai-SB", "Microsoft JhengHei", serif'
+            : '"Microsoft JhengHei", "Arial Black", sans-serif';
+          
+          ctx.font = `bold ${size}px ${fontName}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          const chars = text.split("");
+          const len = chars.length;
+          
+          if (len === 1) {
+            const angle = (startAngle + endAngle) / 2;
+            ctx.translate(500, 500);
+            ctx.rotate(angle);
+            ctx.translate(0, isReversed ? radius : -radius);
+            if (isReversed) ctx.rotate(Math.PI);
+            ctx.fillText(chars[0], 0, 0);
+          } else {
+            const arcLen = endAngle - startAngle;
+            const step = arcLen / (len - 1);
+            
+            for (let i = 0; i < len; i++) {
+              const angle = startAngle + i * step;
+              ctx.save();
+              ctx.translate(500, 500);
+              ctx.rotate(angle);
+              ctx.translate(0, isReversed ? radius : -radius);
+              if (isReversed) ctx.rotate(Math.PI);
+              ctx.fillText(chars[i], 0, 0);
+              ctx.restore();
+            }
+          }
+          ctx.restore();
+        };
+
+        // 計算環繞半徑 (支援手動調節 textRadiusOffset 緊湊度)
+        const baseRadius = 450 - borderWidth - (borderType === 'double' ? 45 : 20) - 15 - textRadiusOffset;
+
+        if (stampLayout === 'bottom-bar') {
+          // 下分欄排版頂弧文字
+          const topSpan = Math.min(Math.PI * 0.85, textSub.length * textSpacingSub);
+          renderArchedText(
+            textSub,
+            -Math.PI/2 - topSpan/2,
+            -Math.PI/2 + topSpan/2,
+            baseRadius,
+            fontSizeSub,
+            false,
+            textSpacingSub
+          );
+
+          // 橫書主姓名
+          ctx.save();
+          const mainFont = fontFamily === 'Serif'
+            ? '"Noto Serif TC", "DFKai-SB", "Microsoft JhengHei", serif'
+            : '"Microsoft JhengHei", sans-serif';
+          ctx.font = `bold ${fontSizeMain}px ${mainFont}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const textAreaY = dividerY + (1000 - dividerY - borderWidth - 40) / 2 + textYOffset;
+          ctx.fillText(textMain, 500, textAreaY);
+          ctx.restore();
+
+        } else if (stampLayout === 'curved') {
+          // 雙弧同心圓章
+          const topSpan = Math.min(Math.PI * 0.9, textSub.length * textSpacingSub);
+          const bottomSpan = Math.min(Math.PI * 0.9, textBottomArched.length * textSpacingSub * 0.85);
+
+          renderArchedText(
+            textSub,
+            -Math.PI/2 - topSpan/2,
+            -Math.PI/2 + topSpan/2,
+            baseRadius,
+            fontSizeSub,
+            false,
+            textSpacingSub
+          );
+
+          renderArchedText(
+            textBottomArched,
+            Math.PI/2 + bottomSpan/2,
+            Math.PI/2 - bottomSpan/2,
+            baseRadius,
+            fontSizeSub * 0.85,
+            true,
+            textSpacingSub * 0.85
+          );
+
+          ctx.save();
+          const centerFont = fontFamily === 'Serif'
+            ? '"Noto Serif TC", "DFKai-SB", serif'
+            : '"Microsoft JhengHei", sans-serif';
+          ctx.font = `bold ${fontSizeMain}px ${centerFont}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(textMain, 500, 500 + textYOffset);
+          ctx.restore();
+        } else {
+          // 極簡
+          const bottomSpan = Math.min(Math.PI * 0.75, textMain.length * 0.12);
+          renderArchedText(
+            textMain,
+            Math.PI/2 + bottomSpan/2,
+            Math.PI/2 - bottomSpan/2,
+            410,
+            fontSizeSub,
+            true,
+            0.12
+          );
+        }
+
+        ctx.restore();
+      };
+
+      // 監聽重繪
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          drawStampBase(canvas, 600); // 手機即時預覽 600x600 px，流暢無延遲
+        }
+      }, [
+        image, selectedClipart, activeTab, stampLayout, imgScale, imgRotation, imgX, imgY,
+        blackPoint, whitePoint, enableLineBoost, borderType, borderWidth, dividerY,
+        dividerWidth, textMain, textSub, textBottomArched, fontSizeMain, fontSizeSub,
+        textSpacingSub, textRadiusOffset, textYOffset, fontFamily, clipartImages,
+        bgColorKey, bgTolerance, focalCropRadius
+      ]);
+
+      // 拖曳控制
+      const handleDragStart = (e) => {
+        setIsDragging(true);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        const scaleX = 1000 / rect.width;
+        const scaleY = 1000 / rect.height;
+        
+        setDragStart({
+          x: (clientX - rect.left) * scaleX - imgX,
+          y: (clientY - rect.top) * scaleY - imgY
+        });
+      };
+
+      const handleDragMove = (e) => {
+        if (!isDragging || !dragStart) return;
+        if (e.touches) e.preventDefault();
+        
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        const scaleX = 1000 / rect.width;
+        const scaleY = 1000 / rect.height;
+
+        setImgX((clientX - rect.left) * scaleX - dragStart.x);
+        setImgY((clientY - rect.top) * scaleY - dragStart.y);
+      };
+
+      const handleDragEnd = () => {
+        setIsDragging(false);
+        setDragStart(null);
+      };
+
+      const handleWheelZoom = (e) => {
+        e.preventDefault();
+        const step = 0.05;
+        if (e.deltaY < 0) {
+          setImgScale(prev => Math.min(2.8, prev + step));
+        } else {
+          setImgScale(prev => Math.max(0.2, prev - step));
+        }
+      };
+
+      // 重設曝光
+      const handleReset = () => {
+        setImgScale(1.0);
+        setImgRotation(0);
+        setImgX(0);
+        setImgY(stampLayout === 'bottom-bar' ? -30 : 0);
+        setBlackPoint(115);
+        setWhitePoint(185);
+        setBgTolerance(65);
+        setFocalCropRadius(440);
+        showToast("已重置所有圖像位置、曝光去背參數。");
+      };
+
+      const handleDownload = (diameterCm) => {
+        let finalSize = 1200;
+        let desc = "1200px 超高清數位版";
+
+        if (diameterCm === 2) {
+          finalSize = 236;
+          desc = "2.0公分實體規格";
+        } else if (diameterCm === 4) {
+          finalSize = 472;
+          desc = "4.0公分實體規格";
+        }
+
+        const downloadCanvas = document.createElement('canvas');
+        drawStampBase(downloadCanvas, finalSize);
+
+        const a = document.createElement('a');
+        a.download = `光敏印章_${textMain || 'stamp'}_${diameterCm}cm.png`;
+        a.href = downloadCanvas.toDataURL('image/png');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        showToast(`【${desc}】PNG 圖檔下載成功！`);
+      };
+
+      return (
+        <div className="flex-1 flex flex-col">
+          
+          {/* 頂部通知 */}
+          {toastMsg && (
+            <div className="fixed top-6 right-6 z-50 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-400 animate-bounce">
+              <Icon name="shield" className="w-5 h-5 text-emerald-100" />
+              <span className="font-semibold text-sm">{toastMsg}</span>
+            </div>
+          )}
+
+          {/* 頂部導覽列 */}
+          <header className="bg-slate-950 border-b border-slate-800 sticky top-0 z-40 backdrop-blur-md bg-opacity-95">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-tr from-rose-600 to-amber-500 rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/25">
+                  <Icon name="sparkles" className="w-5.5 h-5.5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-rose-400 bg-clip-text text-transparent">
+                    光敏卡通印章大師 Pro • 研習特製版
+                  </h1>
+                  <p className="text-[10px] text-slate-400 hidden sm:block">
+                    照片智能去背純化 • 實體2/4公分精密輸出對位 • 免費部署於 GitHub Pages
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 bg-rose-500/10 text-rose-400 rounded-full text-xs font-semibold border border-rose-500/20">
+                  白底黑圖 • 雙框預設
+                </span>
+              </div>
+            </div>
+          </header>
+
+          {/* 主工作區 */}
+          <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* 左側：控制面板 */}
+            <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
+              
+              {/* 1. 印章排版版型 */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg">
+                    <Icon name="grid" className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-100">1. 選擇印章版面格局</h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { id: 'curved', name: '同心圓雙圈印章', desc: '頂弧 + 底弧環繞 (圓形雙框預設)', badge: '最熱門' },
+                    { id: 'bottom-bar', name: '經典下分欄圓章', desc: '名字置於水平橫欄底座', badge: '個性化' },
+                    { id: 'minimal', name: '極簡無框設計', desc: '純插畫圖樣 + 底圈小字', badge: '紀念章' },
+                  ].map(layout => (
+                    <button
+                      key={layout.id}
+                      onClick={() => {
+                        setStampLayout(layout.id);
+                        if (layout.id === 'curved') {
+                          setImgY(0);
+                        } else if (layout.id === 'bottom-bar') {
+                          setImgY(-30);
+                        }
+                      }}
+                      className={`p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+                        stampLayout === layout.id 
+                          ? 'border-rose-500 bg-rose-500/5 text-white shadow-md' 
+                          : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:bg-slate-900'
+                      }`}
+                    >
+                      {layout.badge && (
+                        <span className="absolute top-2.5 right-2.5 px-1.5 py-0.5 bg-rose-500/15 text-[9px] text-rose-400 rounded-md font-bold">
+                          {layout.badge}
+                        </span>
+                      )}
+                      <span className="font-bold text-sm text-slate-200">{layout.name}</span>
+                      <span className="text-[10px] text-slate-500 mt-1">{layout.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. 素材與照片載入 */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg">
+                      <Icon name="upload" className="w-5 h-5" />
+                    </div>
+                    <h2 className="text-md font-bold text-slate-100">2. 素材與手繪稿照片載入</h2>
+                  </div>
+                  
+                  <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                    <button
+                      onClick={() => {
+                        setActiveTab('upload');
+                        showToast("已切換至個人照片上傳分頁！");
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        activeTab === 'upload' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      上傳自製手繪照片
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('presets');
+                        showToast("已切換至內建精選卡通庫！");
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        activeTab === 'presets' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      選擇內建常用圖案
+                    </button>
+                  </div>
+                </div>
+
+                {activeTab === 'upload' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                    <label className="border-2 border-dashed border-slate-855 hover:border-rose-500 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-slate-900/20 hover:bg-slate-900/60 group">
+                      <div className="w-10 h-10 rounded-full bg-slate-850 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Icon name="upload" className="w-5 h-5 text-slate-400 group-hover:text-rose-500" />
+                      </div>
+                      <span className="text-xs font-medium text-slate-300">
+                        點擊選擇或拖曳上傳照片
+                      </span>
+                      <span className="text-[10px] text-slate-550">
+                        支援 JPG, PNG, WEBP 等各式圖片
+                      </span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleImageUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+
+                    <div className="text-slate-400 text-xs space-y-2 bg-slate-900/60 p-4 rounded-xl border border-slate-850 leading-relaxed">
+                      <p className="font-semibold text-slate-300 flex items-center gap-1">
+                        <Icon name="shield" className="w-3.5 h-3.5 text-rose-400" /> 研習手繪與相片製版指南：
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-slate-400 text-[11px]">
+                        <li>可以直接用手指在右側圓形內拖曳、放大調整位置。</li>
+                        <li>如照片帶有背景雜影，可使用下方<span className="text-rose-400 font-bold">自動去背與主體純化</span>控制面版進行處理。</li>
+                        <li>目前檔案：<span className="text-emerald-400 font-mono font-bold">{imageName ? imageName : "（已載入系統預設示範人像）"}</span></li>
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="animate-fadeIn">
+                    <p className="text-xs text-slate-400 mb-3 flex items-center gap-1">
+                      <Icon name="smile" className="w-3.5 h-3.5 text-rose-400" />
+                      精選 12 款高對比基本卡通選圖（純黑向量，製版無任何毛邊）：
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+                      {Object.keys(CLIPART_LIBRARY).map(key => (
+                        <button
+                          key={key}
+                          onClick={() => {
+                            setSelectedClipart(key);
+                            showToast(`已套用：${CLIPART_LIBRARY[key].name}`);
+                          }}
+                          className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                            selectedClipart === key && activeTab === 'presets'
+                              ? 'border-rose-500 bg-rose-500/10 text-white shadow-lg' 
+                              : 'border-slate-855 bg-slate-900/40 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <div className="w-10 h-10 flex items-center justify-center bg-white rounded-lg p-1 border border-slate-800">
+                            <div 
+                              className="w-full h-full"
+                              dangerouslySetInnerHTML={{ __html: CLIPART_LIBRARY[key].svg }}
+                            />
+                          </div>
+                          <span className="text-[10px] font-bold truncate w-full">{CLIPART_LIBRARY[key].name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. 自動去背與主體純化 */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg">
+                      <Icon name="sliders" className="w-5 h-5" />
+                    </div>
+                    <h2 className="text-md font-bold text-slate-100">3. 自動去背與主體純化 (研習核心控制)</h2>
+                  </div>
+                  <button 
+                    onClick={handleReset}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all"
+                  >
+                    <Icon name="refresh" className="w-3.5 h-3.5" />
+                    重設所有曝光
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* 自動去背工具 (Chroma-Key + Focal Mask) */}
+                  {activeTab === 'upload' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gradient-to-br from-slate-900 to-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
+                      
+                      {/* 自動背景去色橡皮擦 */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-rose-400 font-bold flex items-center gap-1">🧹 背景去色橡皮擦</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500 text-[10px]">去背色:</span>
+                            <input 
+                              type="color" 
+                              value={bgColorKey}
+                              onChange={(e) => setBgColorKey(e.target.value)}
+                              className="w-5 h-5 rounded cursor-pointer border border-slate-700 bg-transparent"
+                              title="吸取照片背景色進行去色"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-slate-400">
+                          <span>去色容差 (強度)</span>
+                          <span className="font-mono text-rose-400">{bgTolerance}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="1" 
+                          max="180" 
+                          value={bgTolerance}
+                          onChange={(e) => setBgTolerance(parseInt(e.target.value))}
+                          className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <p className="text-[9px] text-slate-500">拉大強度能一鍵清除照片背後的雜色或不均勻背景影子。</p>
+                      </div>
+
+                      {/* 主體圓形裁切焦點 */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-rose-400 font-bold flex items-center gap-1">🎯 主體焦點正圓裁切</span>
+                          <span className="font-mono text-rose-400">{focalCropRadius} px</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          <span>裁切焦點半徑</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="150" 
+                          max="490" 
+                          value={focalCropRadius}
+                          onChange={(e) => setFocalCropRadius(parseInt(e.target.value))}
+                          className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <p className="text-[9px] text-slate-500">以中心剪裁正圓，一鍵切除照片四周所有不相干的桌角和背景雜物。</p>
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* 手繪曝光對比調線 */}
+                  {activeTab === 'upload' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/30 p-4 rounded-xl border border-slate-855">
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-1">
+                          <span className="text-slate-300">🍂 清除紙面陰影 (調白臨界)</span>
+                          <span className="text-rose-400 font-mono">{whitePoint}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-1">大於此強度的灰色影子全部洗成純白。</p>
+                        <input 
+                          type="range" 
+                          min="130" 
+                          max="245" 
+                          value={whitePoint}
+                          onChange={(e) => setWhitePoint(parseInt(e.target.value))}
+                          className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-1">
+                          <span className="text-slate-300">✒️ 鉛筆手繪著墨 (加深加粗)</span>
+                          <span className="text-rose-400 font-mono">{blackPoint}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-1">小於此強度的淺色線條全部轉為飽滿純黑。</p>
+                        <input 
+                          type="range" 
+                          min="30" 
+                          max="145" 
+                          value={blackPoint}
+                          onChange={(e) => setBlackPoint(parseInt(e.target.value))}
+                          className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 尺寸、旋轉與高度 */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-400 flex items-center gap-1"><Icon name="zoomIn" className="w-3.5 h-3.5" /> 圖案尺寸縮放</span>
+                        <span className="text-rose-400 font-mono">{Math.round(imgScale * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.3" 
+                        max="2.5" 
+                        step="0.05"
+                        value={imgScale}
+                        onChange={(e) => setImgScale(parseFloat(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-400 flex items-center gap-1"><Icon name="rotate" className="w-3.5 h-3.5" /> 旋轉角度</span>
+                        <span className="text-rose-400 font-mono">{imgRotation}°</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="-180" 
+                        max="180" 
+                        value={imgRotation}
+                        onChange={(e) => setImgRotation(parseInt(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-400">↕ 上下垂直修正</span>
+                        <span className="text-rose-400 font-mono">{imgY} px</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="-180" 
+                        max="150" 
+                        value={imgY}
+                        onChange={(e) => setImgY(parseInt(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. 文字內容與排版 */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg">
+                    <Icon name="type" className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-100">4. 編輯印面雕刻文字內容</h2>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 bg-slate-900/30 p-3 rounded-xl border border-slate-855">
+                    <span className="text-xs font-bold text-slate-400">印章中文字體風格：</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setFontFamily('Serif')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          fontFamily === 'Serif' ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300' : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        標楷書法體 (圓章推薦)
+                      </button>
+                      <button
+                        onClick={() => setFontFamily('Sans')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          fontFamily === 'Sans' ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300' : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        粗黑線條體 (高對比)
+                      </button>
+                    </div>
+                  </div>
+
+                  {stampLayout === 'bottom-bar' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-slate-400">分欄水平橫割線 Y 軸高度</span>
+                          <span className="text-rose-400 font-mono">{dividerY}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="500" 
+                          max="740" 
+                          value={dividerY}
+                          onChange={(e) => setDividerY(parseInt(e.target.value))}
+                          className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-slate-400">分欄線寬粗細</span>
+                          <span className="text-rose-400 font-mono">{dividerWidth} px</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="4" 
+                          max="24" 
+                          value={dividerWidth}
+                          onChange={(e) => setDividerWidth(parseInt(e.target.value))}
+                          className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                        {stampLayout === 'bottom-bar' ? '下分欄主要大字' : '置中姓名大字'}
+                      </label>
+                      <input 
+                        type="text" 
+                        value={textMain}
+                        onChange={(e) => setTextMain(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 text-rose-400 font-bold rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-rose-500"
+                        placeholder="例如：王小明"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">頂部弧圈文字</label>
+                      <input 
+                        type="text" 
+                        value={textSub}
+                        onChange={(e) => setTextSub(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 text-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-rose-500"
+                        placeholder="例如：SUPERSTAR"
+                      />
+                    </div>
+
+                    {stampLayout === 'curved' && (
+                      <div className="animate-fadeIn">
+                        <label className="block text-xs font-semibold text-slate-400 mb-1.5">底部弧圈文字</label>
+                        <input 
+                          type="text" 
+                          value={textBottomArched}
+                          onChange={(e) => setTextBottomArched(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 text-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-rose-500"
+                          placeholder="例如：CREATIVE STUDY"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-3 border-t border-slate-900">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-500">中心字級</span>
+                        <span className="text-slate-300 font-mono">{fontSizeMain}px</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="50" 
+                        max="160" 
+                        value={fontSizeMain}
+                        onChange={(e) => setFontSizeMain(parseInt(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-500">環繞字級</span>
+                        <span className="text-slate-300 font-mono">{fontSizeSub}px</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="25" 
+                        max="80" 
+                        value={fontSizeSub}
+                        onChange={(e) => setFontSizeSub(parseInt(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-500">弧形間距</span>
+                        <span className="text-slate-300 font-mono">{textSpacingSub}</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.05" 
+                        max="0.28" 
+                        step="0.01"
+                        value={textSpacingSub}
+                        onChange={(e) => setTextSpacingSub(parseFloat(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-500">字框距離</span>
+                        <span className="text-slate-300 font-mono">{textRadiusOffset}px</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="-30" 
+                        max="80" 
+                        value={textRadiusOffset}
+                        onChange={(e) => setTextRadiusOffset(parseInt(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-500">高度修正</span>
+                        <span className="text-slate-300 font-mono">{textYOffset}px</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="-40" 
+                        max="40" 
+                        value={textYOffset}
+                        onChange={(e) => setTextYOffset(parseInt(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. 圓章外框 (預設雙圈圓章) */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg">
+                    <Icon name="settings" className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-100">5. 邊框格式設定 (預設雙圈圓章)</h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-2">圓圈外框線寬形式</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'double', name: '官章雙圈 (預設)' },
+                        { id: 'single', name: '簡約單圈' },
+                        { id: 'bold-single', name: '粗厚單圈' }
+                      ].map(border => (
+                        <button
+                          key={border.id}
+                          onClick={() => setBorderType(border.id)}
+                          className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all ${
+                            borderType === border.id 
+                              ? 'border-rose-500 bg-rose-500/10 text-rose-400 shadow-md' 
+                              : 'border-slate-800 text-slate-400 hover:bg-slate-900'
+                          }`}
+                        >
+                          {border.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400 font-semibold">外框線寬厚度</span>
+                      <span className="text-rose-400 font-mono">{borderWidth} px</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mb-2">光敏製版機建議使用較寬的外圈，以保證印泥壓力均勻。</p>
+                    <input 
+                      type="range" 
+                      min="6" 
+                      max="32" 
+                      value={borderWidth}
+                      onChange={(e) => setBorderWidth(parseInt(e.target.value))}
+                      className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* 右側：即時預覽與 GitHub Pages 導出下載 */}
+            <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-6 lg:sticky lg:top-24">
+              
+              {/* 即時曝光黑白預覽區 */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col items-center">
+                <div className="w-full flex items-center justify-between mb-4 border-b border-slate-900 pb-3">
+                  <span className="text-sm font-bold text-slate-300 flex items-center gap-1.5">
+                    <Icon name="eye" className="w-4 h-4 text-rose-500" /> 
+                    曝光二值化預覽
+                  </span>
+                  <button 
+                    onClick={() => setShowRealScale(!showRealScale)}
+                    className={`text-[10px] px-2.5 py-1.5 rounded-full border transition-all ${
+                      showRealScale 
+                        ? 'bg-rose-500/20 border-rose-500 text-rose-300 font-bold' 
+                        : 'bg-slate-900 border-slate-850 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {showRealScale ? "🔍 切換至無極調整" : "📏 1:1 實物比例比對"}
+                  </button>
+                </div>
+
+                {/* 觸控與拖拽主 Canvas */}
+                <div className="relative w-full aspect-square max-w-[340px] bg-white rounded-2xl overflow-hidden shadow-inner border border-slate-800/80 group flex items-center justify-center">
+                  
+                  {showRealScale ? (
+                    // 真實 1:1 物理尺寸比對
+                    <div className="absolute inset-0 bg-white p-4 flex flex-col items-center justify-center gap-6 select-none animate-fadeIn">
+                      <div className="text-slate-800 text-[10px] font-bold border-b border-dashed border-slate-300 pb-1.5 w-full text-center">
+                        模擬雷射列印後於實體紙上的真實直徑
+                      </div>
+                      <div className="flex items-center gap-10">
+                        {/* 2.0 cm */}
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="w-[75.6px] h-[75.6px] border border-slate-200 rounded-full shadow-sm bg-white overflow-hidden flex items-center justify-center">
+                            <canvas 
+                              ref={(el) => { if (el) drawStampBase(el, 76); }}
+                              className="w-full h-full"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
+                            直徑 2.0 cm
+                          </span>
+                        </div>
+
+                        {/* 4.0 cm */}
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="w-[151.2px] h-[151.2px] border border-slate-200 rounded-full shadow-sm bg-white overflow-hidden flex items-center justify-center">
+                            <canvas 
+                              ref={(el) => { if (el) drawStampBase(el, 151); }}
+                              className="w-full h-full"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
+                            直徑 4.0 cm
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-[9px] text-slate-400 text-center leading-relaxed">
+                        * 基於標準 96 DPI 解析度換算，<br />
+                        高強度對比曝光片遮光效果最佳。
+                      </div>
+                    </div>
+                  ) : (
+                    // 圓盤編輯預覽器
+                    <canvas
+                      ref={canvasRef}
+                      onMouseDown={handleDragStart}
+                      onMouseMove={handleDragMove}
+                      onMouseUp={handleDragEnd}
+                      onMouseLeave={handleDragEnd}
+                      onTouchStart={handleDragStart}
+                      onTouchMove={handleDragMove}
+                      onTouchEnd={handleDragEnd}
+                      onWheel={handleWheelZoom}
+                      className="w-full h-full object-contain cursor-grab active:cursor-grabbing bg-white"
+                      title="可在圖上按住滑鼠或手指拖曳、滾動滾輪調整縮放"
+                    />
+                  )}
+
+                  {/* 手勢導航提示 */}
+                  {!showRealScale && (
+                    <div className="absolute bottom-3 left-3 right-3 bg-slate-950/80 backdrop-blur text-[10px] text-slate-300 py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 pointer-events-none justify-center">
+                      <Icon name="move" className="w-3.5 h-3.5 text-rose-500" />
+                      按住拖曳位置 / 滾輪快速縮放尺寸
+                    </div>
+                  )}
+                </div>
+
+                <span className="text-[10px] text-slate-500 mt-2">一律以白底黑圖輸出（符合光敏曝光最高規格）</span>
+              </div>
+
+              {/* 下載與列印校準器 */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-lg">
+                    <Icon name="download" className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-md font-bold text-slate-100">6. 下載精確規格 PNG</h2>
+                </div>
+
+                <div className="space-y-3">
+                  {/* 2 cm 導出 */}
+                  <button
+                    onClick={() => handleDownload(2)}
+                    className="w-full bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-between shadow-lg shadow-rose-600/20 active:scale-[0.98] transition-all"
+                  >
+                    <div className="text-left">
+                      <div className="font-bold flex items-center gap-1.5 text-sm">
+                        下載 2.0 cm 實體規格 
+                        <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded">常備核章</span>
+                      </div>
+                      <div className="text-[10px] text-rose-200 font-normal mt-0.5">適合考卷批改章、集點卡、簽到小章</div>
+                    </div>
+                    <Icon name="download" className="w-4 h-4" />
+                  </button>
+
+                  {/* 4 cm 導出 */}
+                  <button
+                    onClick={() => handleDownload(4)}
+                    className="w-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-200 py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-between active:scale-[0.98] transition-all"
+                  >
+                    <div className="text-left">
+                      <div className="font-bold text-sm">下載 4.0 cm 實體規格</div>
+                      <div className="text-[10px] text-slate-400 font-normal mt-0.5">手創活動戳章、大班級合格大戳章</div>
+                    </div>
+                    <Icon name="download" className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* HD 高畫質 */}
+                  <button
+                    onClick={() => handleDownload(1200)}
+                    className="w-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-300 py-3 px-4 rounded-xl font-medium text-xs flex items-center justify-between active:scale-[0.98] transition-all"
+                  >
+                    <div className="text-left">
+                      <div className="font-semibold text-slate-200">下載 1200 px 電子超高清版</div>
+                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">適合電子合約、數位成績單或二次圖像去背</div>
+                    </div>
+                    <Icon name="download" className="w-4 h-4 text-slate-500" />
+                  </button>
+                </div>
+
+                {/* 100% 精準實體輸出指南 */}
+                <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-855 text-xs text-slate-400 space-y-2">
+                  <p className="font-bold text-slate-300 flex items-center gap-1.5">
+                    <Icon name="shield" className="w-3.5 h-3.5 text-rose-500" />
+                    🖨️ 實體精準（2.0cm / 4.0cm）列印攻略：
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-400 leading-relaxed">
+                    <li>下載您所需要的實體尺寸圖檔 (2cm 或 4cm)。</li>
+                    <li>在電腦中打開 <span className="text-white">Microsoft Word</span> 或 <span className="text-white">PPT</span>。</li>
+                    <li>插入下載的 PNG 白底黑圖。</li>
+                    <li>點選圖片，在上方「圖片格式」中，手動將圖片尺寸的高度與寬度精準輸入為 <span className="text-rose-400 font-bold">2.0 cm</span>（或 <span className="text-rose-400 font-bold">4.0 cm</span>）。</li>
+                    <li>用雷射印表機以 <span className="text-white">A4 紙或曝光片</span> 列印出來（記得縮放設為100%不縮放），線條極其銳利分明，即可直接送入光敏機成型！</li>
+                  </ol>
+                </div>
+              </div>
+
+            </div>
+
+          </main>
+
+          {/* 頁尾 */}
+          <footer className="bg-slate-950 border-t border-slate-900 py-8 text-center text-[11px] text-slate-500 leading-relaxed">
+            <div className="max-w-7xl mx-auto px-4">
+              <p className="mb-1">光敏卡通印章大師 Pro • 提供高效純前端二值化濾鏡演算法</p>
+              <p>© 2026 Stamp Master Pro Studio. 所有相片處理皆在您本機處理運算，絕不上傳雲端，保障作品隱私與安全。</p>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    // 將 React 應用掛載至 HTML Root
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
+
+```
